@@ -11,6 +11,14 @@ inputs:
   git-token:
     description: "GitHub token with access to the target deployment repository."
     required: true
+  deploy-repo-name:
+    description: "The name of the GitHub repository to which the application will be deployed."
+    required: false
+    default: "newebpay"
+  org-name:
+    description: "The GitHub organization that owns the target deployment repository."
+    required: false
+    default: "nanchinsnow"
   commit-user-name:
     description: "The Git username used when committing changes to the target deployment repository."
     required: false
@@ -75,7 +83,7 @@ runs:
     - name: Checkout target deployment repository
       uses: actions/checkout@v4
       with:
-        repository: nanchinsnow/newebpay
+        repository: ${{ inputs.org-name }}/${{ inputs.deploy-repo-name }}
         token: ${{ inputs.git-token }}
         ref: main
 
@@ -84,12 +92,12 @@ runs:
       run: |
         IMAGE_TAG="${{ github.event.release.tag_name }}"
         if [[ "$IMAGE_TAG" =~ -rc[0-9]+$ ]]; then
-          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
+          sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
           sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
         else
-          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
+          sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
           sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
-          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
+          sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
           sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
         fi
 
