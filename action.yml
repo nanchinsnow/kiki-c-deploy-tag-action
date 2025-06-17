@@ -77,13 +77,13 @@ runs:
         IMAGE_TAG="${{ github.event.release.tag_name }}"
 
         if [[ "$IMAGE_TAG" =~ -rc[0-9]+$ ]]; then
-          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ input.REPO_NAME }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ input.DEPLOY_APP_NAME }}/overlays/stg/stg.values.yaml
-          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ input.DEPLOY_APP_NAME }}/overlays/stg/stg.values.yaml
+          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
+          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
         else
-          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ input.REPO_NAME }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ input.DEPLOY_APP_NAME }}/overlays/prod/prod.values.yaml
-          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ input.DEPLOY_APP_NAME }}/overlays/prod/prod.values.yaml
-          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ input.REPO_NAME }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ input.DEPLOY_APP_NAME }}/overlays/prod/gke31.values.yaml
-          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ input.DEPLOY_APP_NAME }}/overlays/prod/gke31.values.yaml
+          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
+          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
+          sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
+          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
         fi
 
     - name: Commit and push changes
@@ -104,7 +104,7 @@ runs:
           ENV="prod"
         fi
 
-        SERVICE="${{ input.DEPLOY_APP_NAME }}"
+        SERVICE="${{ inputs.deploy-app-name }}"
         COMMIT_TITLE="$ENV $SERVICE [$JIRA_CPM] [$JIRA_ITPM]"
         git commit \
             -m "$COMMIT_TITLE" \
