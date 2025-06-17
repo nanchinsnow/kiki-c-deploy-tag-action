@@ -11,6 +11,14 @@ inputs:
   git-token:
     description: "GitHub token with access to the target deployment repository."
     required: true
+  commit-user-name:
+    description: "The Git username used when committing changes to the target deployment repository."
+    required: false
+    default: "GitHub Actions"
+  commit-user-email:
+    description: "The Git email address used when committing changes to the target deployment repository."
+    required: false
+    default: "action@github.com"
 
 runs:
   using: "composite"
@@ -29,8 +37,8 @@ runs:
           });
           return release.data.body;
 
-    - name: Parse Jira issues
-      id: parse_jira
+    - name: Get Jira issue keys from tag
+      id: tag_info
       shell: bash
       run: |
         TAG_MESSAGE="${{ fromJson(steps.get_message.outputs.result) }}"
@@ -40,7 +48,8 @@ runs:
           | tr -d '\r' \
           | tr '\n' ' ' \
           | grep -Eoi 'itpmjbaireq-[0-9]{1,10}' \
-          | tr '[:lower:]' '[:upper:]' | sort -u)
+          | head -n1 \
+          | tr '[:lower:]' '[:upper:]')
         if [[ -z "$JIRA_ITPM" ]]; then
           echo "::error title=Missing Jira Issue::No JIRA issue (ITPMJBAIREQ-xxxx) found in the release note. Aborting deployment."
           exit 1
@@ -53,7 +62,7 @@ runs:
           | tr -d '\r' \
           | sort -u)
         if [[ -z "$CPM_KEYS" ]]; then
-          echo "::error title=Missing Jira Issue::No CPM issue found. Aborting deployment."
+          echo "::error title=Missing CPM Jira Issue::No CPM issue (CPM-xxxx) found in the release note. Aborting deployment."
           exit 1
         fi
         JIRA_CPM=$(echo "$CPM_KEYS" \
@@ -63,7 +72,7 @@ runs:
         echo "✅ Parsed JIRA_ITPM: ${JIRA_ITPM}"
         echo "✅ Parsed JIRA_CPM: ${JIRA_CPM}"
 
-    - name: Checkout repository
+    - name: Checkout target deployment repository
       uses: actions/checkout@v4
       with:
         repository: nanchinsnow/newebpay
@@ -74,7 +83,6 @@ runs:
       shell: bash
       run: |
         IMAGE_TAG="${{ github.event.release.tag_name }}"
-
         if [[ "$IMAGE_TAG" =~ -rc[0-9]+$ ]]; then
           sed -i -e '/repository: ghcr.io\/nanchinsnow\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
           sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
@@ -88,8 +96,8 @@ runs:
     - name: Commit and push changes
       shell: bash
       run: |
-        git config user.name "GitHub Actions"
-        git config user.email "action@github.com"
+        git config user.name "${{ inputs.commit-user-name }}"
+        git config user.email "${{ inputs.commit-user-email }}"
         git add -u
 
         if git diff-index --quiet HEAD --; then
@@ -107,6 +115,6 @@ runs:
         COMMIT_TITLE="$ENV $SERVICE [$JIRA_CPM] [$JIRA_ITPM]"
         git commit \
             -m "$COMMIT_TITLE" \
-            -m "Generated commit from GitHub Actions for build ${{ github.run_id }}" \
+            -m "Generated commit from "${{ inputs.commit-user-name }}" for build ${{ github.run_id }}" \
             -m "Tag URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.release.tag_name }}"
         git push
