@@ -3,18 +3,14 @@ description: "Update K8s config files and commit deployment for release tags"
 
 inputs:
   deploy-app-name:
-    description: "The application name used for folder structure"
+    description: "The name of the service directory under the target project used for deployment."
     required: true
   repo-name:
-    description: "The repository name used for image repo"
+    description: "The name of the current source repository, used as the image repository name."
     required: true
   git-token:
-    description: "GitHub token (GH_PAT)"
+    description: "GitHub token with access to the target deployment repository."
     required: true
-  dry-run:
-    description: "Whether to perform dry-run mode"
-    required: false
-    default: "false"
 
 runs:
   using: "composite"
@@ -24,12 +20,15 @@ runs:
       uses: actions/github-script@v7
       with:
         script: |
-          const tag = process.env.TAG_NAME;
+          const tag = '${{ github.event.release.tag_name }}';
           const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-          const release = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+          const release = await github.rest.repos.getReleaseByTag({
+            owner: owner,
+            repo: repo,
+            tag: tag,
+          });
           return release.data.body;
-      env:
-        TAG_NAME: ${{ github.event.release.tag_name }}
+
     - name: Parse Jira issues
       id: parse_jira
       shell: bash
