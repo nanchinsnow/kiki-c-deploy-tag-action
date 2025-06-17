@@ -34,7 +34,7 @@ runs:
       id: parse_jira
       shell: bash
       run: |
-        TAG_MESSAGE="${{ steps.get_message.outputs.result }}"
+        TAG_MESSAGE="${{ fromJson(steps.get_message.outputs.result) }}"
         TAG_NAME="${{ github.event.release.tag_name }}"
 
         JIRA_ITPM=$(echo "$TAG_MESSAGE" \
