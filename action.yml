@@ -1,4 +1,4 @@
-name: "Deploy Tag on Release"
+name: "Deploy Tag on Release (LAB)"
 description: "Update K8s config files and commit deployment for release tags"
 
 inputs:
@@ -31,26 +31,25 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Get release message
+
+    - name: Get merge commit message (simulate release note)
       id: get_message
       uses: actions/github-script@v7
       with:
+        github-token: ${{ inputs.git-token }}
         script: |
-          const tag = '${{ github.event.release.tag_name }}';
-          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-          const release = await github.rest.repos.getReleaseByTag({
-            owner: owner,
-            repo: repo,
-            tag: tag,
+          const sha = context.sha;
+          const { data: commit } = await github.rest.repos.getCommit({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: sha,
           });
-          return release.data.body;
-
+          return commit.commit.message;
     - name: Get Jira issue keys from tag
       id: tag_info
       shell: bash
       run: |
         TAG_MESSAGE="${{ fromJson(steps.get_message.outputs.result) }}"
-        TAG_NAME="${{ github.event.release.tag_name }}"
 
         JIRA_ITPM=$(echo "$TAG_MESSAGE" \
           | tr -d '\r' \
@@ -90,16 +89,8 @@ runs:
     - name: Change K8s image version
       shell: bash
       run: |
-        IMAGE_TAG="${{ github.event.release.tag_name }}"
-        if [[ "$IMAGE_TAG" =~ -rc[0-9]+$ ]]; then
-          sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
-          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/stg/stg.values.yaml
-        else
-          sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
-          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/prod/prod.values.yaml
-          sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
-          sed -i -e "s#.*nanchinsnow.com/jira-issue:.*#    nanchinsnow.com/jira-issue: $JIRA_ITPM#" ${{ inputs.deploy-app-name }}/overlays/prod/gke31.values.yaml
-        fi
+        IMAGE_TAG="${{ github.sha }}"
+        sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/lab/lab.values.yaml
 
     - name: Commit and push changes
       shell: bash
@@ -113,16 +104,11 @@ runs:
           exit 0
         fi
 
-        if [[ "${{ github.event.release.tag_name }}" == *-rc* ]]; then
-          ENV="stg"
-        else
-          ENV="prod"
-        fi
-
         SERVICE="${{ inputs.deploy-app-name }}"
-        COMMIT_TITLE="$ENV $SERVICE [$JIRA_CPM] [$JIRA_ITPM]"
+        COMMIT_TITLE="lab $SERVICE [$JIRA_CPM] [$JIRA_ITPM]"
         git commit \
             -m "$COMMIT_TITLE" \
+            -m "${{ inputs.deploy-app-name }}: update ${{ inputs.repo-name }} image tag to ${{ github.event.head_commit.id }}" \
             -m "Generated commit from ${{ inputs.commit-user-name }} for build ${{ github.run_id }}" \
             -m "Tag URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.release.tag_name }}"
         git push
