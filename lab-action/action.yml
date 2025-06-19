@@ -96,5 +96,5 @@ runs:
             -m "$COMMIT_TITLE" \
             -m "${{ inputs.deploy-app-name }}: update ${{ inputs.repo-name }} image tag to ${{ github.event.head_commit.id }}" \
             -m "Generated commit from ${{ inputs.commit-user-name }} for build ${{ github.run_id }}" \
-            -m "Original commit: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.head_commit.id }}" \
+            -m "Original commit: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.head_commit.id }}"
         git push
