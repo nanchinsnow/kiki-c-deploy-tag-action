@@ -1,0 +1,114 @@
+name: "Deploy Tag on Release"
+description: "Update K8s config files and commit deployment for release tags"
+
+inputs:
+  deploy-app-name:
+    description: "The name of the service directory under the target project used for deployment."
+    required: true
+  repo-name:
+    description: "The name of the current source repository, used as the image repository name."
+    required: true
+  git-token:
+    description: "GitHub token with access to the target deployment repository."
+    required: true
+  deploy-repo-name:
+    description: "The name of the GitHub repository to which the application will be deployed."
+    required: false
+    default: "newebpay"
+  org-name:
+    description: "The GitHub organization that owns the target deployment repository."
+    required: false
+    default: "nanchinsnow"
+  commit-user-name:
+    description: "The Git username used when committing changes to the target deployment repository."
+    required: false
+    default: "GitHub Actions"
+  commit-user-email:
+    description: "The Git email address used when committing changes to the target deployment repository."
+    required: false
+    default: "action@github.com"
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Get merge commit message (simulate release note)
+      id: get_message
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.git-token }}
+        script: |
+          const sha = context.sha;
+          const { data: commit } = await github.rest.repos.getCommit({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: sha,
+          });
+          return commit.commit.message;
+    - name: Get Jira issue keys from tag
+      id: tag_info
+      shell: bash
+      run: |
+        TAG_MESSAGE="${{ fromJson(steps.get_message.outputs.result) }}"
+
+        JIRA_ITPM=$(echo "$TAG_MESSAGE" \
+          | tr -d '\r' \
+          | tr '\n' ' ' \
+          | grep -Eoi 'itpmjbaireq-[0-9]{1,10}' \
+          | head -n1 \
+          | tr '[:lower:]' '[:upper:]')
+        if [[ -z "$JIRA_ITPM" ]]; then
+          echo "::error title=Missing Jira Issue::No JIRA issue (ITPMJBAIREQ-xxxx) found in the release note. Aborting deployment."
+          exit 1
+        fi
+        printf "JIRA_ITPM=%s\n" "$JIRA_ITPM" >> "$GITHUB_ENV"
+
+        CPM_KEYS=$(echo "$TAG_MESSAGE" \
+          | grep -Eoi 'cpm-[0-9]{1,10}' \
+          | tr '[:lower:]' '[:upper:]' \
+          | tr -d '\r' \
+          | sort -u)
+        if [[ -z "$CPM_KEYS" ]]; then
+          echo "::error title=Missing CPM Jira Issue::No CPM issue (CPM-xxxx) found in the release note. Aborting deployment."
+          exit 1
+        fi
+        JIRA_CPM=$(echo "$CPM_KEYS" \
+          | sed 's/CPM-//' \
+          | awk 'NR==1 { printf "CPM%s", $0; next } { printf "/ %s", $0 }')
+        printf "JIRA_CPM=%s\n" "$JIRA_CPM" >> $GITHUB_ENV
+        echo "✅ Parsed JIRA_ITPM: ${JIRA_ITPM}"
+        echo "✅ Parsed JIRA_CPM: ${JIRA_CPM}"
+
+    - name: Checkout target deployment repository
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.org-name }}/${{ inputs.deploy-repo-name }}
+        token: ${{ inputs.git-token }}
+        ref: main
+
+    - name: Change K8s image version
+      shell: bash
+      run: |
+        IMAGE_TAG="${{ github.sha }}"
+        sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/lab/lab.values.yaml
+
+    - name: Commit and push changes
+      shell: bash
+      run: |
+        git config user.name "${{ inputs.commit-user-name }}"
+        git config user.email "${{ inputs.commit-user-email }}"
+        git add -u
+
+        if git diff-index --quiet HEAD --; then
+          echo "No changes to commit."
+          exit 0
+        fi
+
+        SERVICE="${{ inputs.deploy-app-name }}"
+        COMMIT_TITLE="lab $SERVICE [$JIRA_CPM] [$JIRA_ITPM]"
+        git commit \
+            -m "$COMMIT_TITLE" \
+            -m "${{ inputs.deploy-app-name }}: update ${{ inputs.repo-name }} image tag to ${{ github.event.head_commit.id }}" \
+            -m "Generated commit from ${{ inputs.commit-user-name }} for build ${{ github.run_id }}" \
+            -m "Tag URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.release.tag_name }}"
+        git push
