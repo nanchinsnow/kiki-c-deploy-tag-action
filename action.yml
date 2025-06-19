@@ -31,8 +31,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-
-    - name: Get merge commit message (simulate release note)
+    - name: Get merge commit message
       id: get_message
       uses: actions/github-script@v7
       with:
@@ -51,18 +50,6 @@ runs:
       run: |
         TAG_MESSAGE="${{ fromJson(steps.get_message.outputs.result) }}"
 
-        JIRA_ITPM=$(echo "$TAG_MESSAGE" \
-          | tr -d '\r' \
-          | tr '\n' ' ' \
-          | grep -Eoi 'itpmjbaireq-[0-9]{1,10}' \
-          | head -n1 \
-          | tr '[:lower:]' '[:upper:]')
-        if [[ -z "$JIRA_ITPM" ]]; then
-          echo "::error title=Missing Jira Issue::No JIRA issue (ITPMJBAIREQ-xxxx) found in the release note. Aborting deployment."
-          exit 1
-        fi
-        printf "JIRA_ITPM=%s\n" "$JIRA_ITPM" >> "$GITHUB_ENV"
-
         CPM_KEYS=$(echo "$TAG_MESSAGE" \
           | grep -Eoi 'cpm-[0-9]{1,10}' \
           | tr '[:lower:]' '[:upper:]' \
@@ -76,7 +63,6 @@ runs:
           | sed 's/CPM-//' \
           | awk 'NR==1 { printf "CPM%s", $0; next } { printf "/ %s", $0 }')
         printf "JIRA_CPM=%s\n" "$JIRA_CPM" >> $GITHUB_ENV
-        echo "✅ Parsed JIRA_ITPM: ${JIRA_ITPM}"
         echo "✅ Parsed JIRA_CPM: ${JIRA_CPM}"
 
     - name: Checkout target deployment repository
@@ -105,10 +91,10 @@ runs:
         fi
 
         SERVICE="${{ inputs.deploy-app-name }}"
-        COMMIT_TITLE="lab $SERVICE [$JIRA_CPM] [$JIRA_ITPM]"
+        COMMIT_TITLE="lab $SERVICE [$JIRA_CPM]"
         git commit \
             -m "$COMMIT_TITLE" \
             -m "${{ inputs.deploy-app-name }}: update ${{ inputs.repo-name }} image tag to ${{ github.event.head_commit.id }}" \
             -m "Generated commit from ${{ inputs.commit-user-name }} for build ${{ github.run_id }}" \
-            -m "Tag URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event.release.tag_name }}"
+            -m "Original commit: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.head_commit.id }}" \
         git push
