@@ -31,7 +31,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Get merge commit message
+    - name: Get release message (simulate the release message of the production deployment action)
       id: get_message
       uses: actions/github-script@v7
       with:
@@ -44,11 +44,23 @@ runs:
             ref: sha,
           });
           return commit.commit.message;
-    - name: Get Jira issue keys from tag
+    - name: Get Jira issue keys from tag (simulates the production deployment action)
       id: tag_info
       shell: bash
       run: |
         TAG_MESSAGE="${{ fromJson(steps.get_message.outputs.result) }}"
+
+        JIRA_ITPM=$(echo "$TAG_MESSAGE" \
+          | tr -d '\r' \
+          | tr '\n' ' ' \
+          | grep -Eoi 'itpmjbaireq-[0-9]{1,10}' \
+          | head -n1 \
+          | tr '[:lower:]' '[:upper:]')
+        if [[ -z "$JIRA_ITPM" ]]; then
+          echo "::error title=Missing Jira Issue::No JIRA issue (ITPMJBAIREQ-xxxx) found in the release note. Aborting deployment."
+          exit 1
+        fi
+        printf "JIRA_ITPM=%s\n" "$JIRA_ITPM" >> "$GITHUB_ENV"
 
         CPM_KEYS=$(echo "$TAG_MESSAGE" \
           | grep -Eoi 'cpm-[0-9]{1,10}' \
@@ -63,22 +75,23 @@ runs:
           | sed 's/CPM-//' \
           | awk 'NR==1 { printf "CPM%s", $0; next } { printf "/ %s", $0 }')
         printf "JIRA_CPM=%s\n" "$JIRA_CPM" >> $GITHUB_ENV
+        echo "✅ Parsed JIRA_ITPM: ${JIRA_ITPM}"
         echo "✅ Parsed JIRA_CPM: ${JIRA_CPM}"
 
-    - name: Checkout target deployment repository
+    - name: Checkout target deployment repository (this is lab behavior.)
       uses: actions/checkout@v4
       with:
         repository: ${{ inputs.org-name }}/${{ inputs.deploy-repo-name }}
         token: ${{ inputs.git-token }}
         ref: main
 
-    - name: Change K8s image version
+    - name: Change K8s image version (this is lab behavior.)
       shell: bash
       run: |
         IMAGE_TAG="${{ github.sha }}"
         sed -i -e '/repository: ghcr.io\/${{ inputs.org-name }}\/${{ inputs.repo-name }}/{n;s/\( *\)tag:.*/\1tag: '"$IMAGE_TAG"'/;}' ${{ inputs.deploy-app-name }}/overlays/lab/lab.values.yaml
 
-    - name: Commit and push changes
+    - name: Commit and push changes (this is lab behavior.)
       shell: bash
       run: |
         git config user.name "${{ inputs.commit-user-name }}"
@@ -87,14 +100,10 @@ runs:
 
         if git diff-index --quiet HEAD --; then
           echo "No changes to commit."
-          exit 0
+        else
+          git commit \
+              -m "${{ inputs.deploy-app-name }}: update ${{ inputs.repo-name }} image tag to ${{ github.event.head_commit.id }}" \
+              -m "Generated commit from ${{ inputs.commit-user-name }} for build ${{ github.run_id }}" \
+              -m "Original commit: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.head_commit.id }}"
+          git push
         fi
-
-        SERVICE="${{ inputs.deploy-app-name }}"
-        COMMIT_TITLE="lab $SERVICE [$JIRA_CPM]"
-        git commit \
-            -m "$COMMIT_TITLE" \
-            -m "${{ inputs.deploy-app-name }}: update ${{ inputs.repo-name }} image tag to ${{ github.event.head_commit.id }}" \
-            -m "Generated commit from ${{ inputs.commit-user-name }} for build ${{ github.run_id }}" \
-            -m "Original commit: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.head_commit.id }}"
-        git push
